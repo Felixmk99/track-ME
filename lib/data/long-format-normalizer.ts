@@ -8,10 +8,32 @@ import { Database } from "@/types/database.types";
 export function normalizeLongFormatData(rows: any[]) {
     const dailyRecords: Record<string, any> = {};
 
+    // Helper to find key case-insensitively
+    const findKey = (row: any, candidates: string[]) => {
+        const keys = Object.keys(row);
+        for (const candidate of candidates) {
+            const found = keys.find(k => k.toLowerCase().trim() === candidate.toLowerCase());
+            if (found) return found;
+        }
+        return null;
+    };
+
+    // Detect keys from first row if possible, or just look per row (slightly slower but safer)
+    if (rows.length === 0) return [];
+
+    console.log("First row raw:", rows[0]); // Debug
+
     rows.forEach(row => {
-        const date = row['observation_date'];
-        const name = row['tracker_name'];
-        const value = parseFloat(row['observation_value']);
+        const dateKey = findKey(row, ['observation_date', 'date', 'day']);
+        const nameKey = findKey(row, ['tracker_name', 'name', 'metric', 'type']);
+        const valueKey = findKey(row, ['observation_value', 'value', 'score', 'rating']);
+        const categoryKey = findKey(row, ['tracker_category', 'category', 'group']);
+
+        const date = dateKey ? row[dateKey] : null;
+        const name = nameKey ? row[nameKey] : null;
+        const valueStr = valueKey ? row[valueKey] : null;
+        const value = parseFloat(valueStr);
+        const category = categoryKey ? row[categoryKey] : 'Other';
 
         if (!date || isNaN(value)) return;
 
@@ -22,7 +44,8 @@ export function normalizeLongFormatData(rows: any[]) {
                 resting_heart_rate: null,
                 exertion_score: null,
                 custom_metrics: {},
-                raw_symptoms: [] // Temp array to calculate composite symptom score later
+                raw_symptoms: [],
+                raw_exertion: []
             };
         }
 
@@ -40,21 +63,37 @@ export function normalizeLongFormatData(rows: any[]) {
                 record.exertion_score = value;
                 break;
             default:
-                // Identify Symptoms based on Category
-                const category = row['tracker_category'];
-                // These categories generally contain 0-3 ordinal symptom severity ratings
-                const isSymptomCategory = ['Pain', 'Brain', 'General', 'Gastrointestinal', 'Muscles', 'Heart and Lungs', 'Emotional', 'Physical'].includes(category);
+                // Define Exertion Types
+                const exertionTypes = [
+                    "Cognitive Exertion",
+                    "Emotional Exertion",
+                    "Physical Exertion",
+                    "Social Exertion"
+                ];
 
-                // Exclude 'Sleep' or 'Cognitive' or 'Social' from Symptom Score if they refer to 'Demands' rather than 'Symptoms'.
-                // The provided list says 'Mentally demanding' -> Cognitive. 'Socially demanding' -> Social. These are loads, not symptoms.
-                // 'Physical' contains 'Physically active' (load?) or symptoms? Screenshot shows 'Physically active' = 1.
-                // Let's exclude 'Physical', 'Social', 'Cognitive' from the *Negative Symptom Score* calculation, as they might be exertion.
+                const isExertion = exertionTypes.includes(name || '');
 
-                const isSymptom = ['Pain', 'Brain', 'General', 'Gastrointestinal', 'Muscles', 'Heart and Lungs', 'Emotional'].includes(category);
-
-                if (isSymptom) {
-                    // Check if it's a numeric value (some might be notes)
+                if (isExertion) {
                     if (!isNaN(value)) {
+                        record.raw_exertion.push(value);
+                    }
+                } else {
+                    // Identify Symptoms based on strict Category Allowlist
+                    const symptomCategories = [
+                        "Custom",
+                        "General",
+                        "Brain",
+                        "Heart and Lungs",
+                        "Pain",
+                        "Muscles",
+                        "Sensory",
+                        "Gastrointestinal"
+                    ];
+
+                    // Use case-insensitive check just in case, though usually they match exactly
+                    const isSymptom = symptomCategories.some(c => c.toLowerCase() === (category || '').toLowerCase());
+
+                    if (isSymptom && !isNaN(value)) {
                         record.raw_symptoms.push(value);
                     }
                 }
@@ -69,22 +108,23 @@ export function normalizeLongFormatData(rows: any[]) {
 
     // Final pass: Collapse dailyRecords into array and calc daily aggregates
     return Object.values(dailyRecords).map(record => {
-        // Calculate daily symptom score (Average? Sum? Max?)
-        // Visible usually computes a "Total Symptom Score". If it's not present in the CSV as a row, we calculate a simple average (0-3 scale).
-        // However, if the user had 10 symptoms at level 1, is that worse than 1 symptom at level 3?
-        // Let's use MEAN for now to stay within 0-3 scale roughly.
-        let calculatedSymptomScore = null;
-        if (record.raw_symptoms.length > 0) {
-            const sum = record.raw_symptoms.reduce((a: number, b: number) => a + b, 0);
-            calculatedSymptomScore = sum / record.raw_symptoms.length;
+        // Calculate Composite Score: Sum(Symptoms) - Sum(Exertion)
+
+        const symptomSum = record.raw_symptoms.reduce((a: number, b: number) => a + b, 0);
+        const exertionSum = record.raw_exertion.reduce((a: number, b: number) => a + b, 0);
+
+        // If we have neither, score is null. If we have either, calculate.
+        let compositeScore = null;
+        if (record.raw_symptoms.length > 0 || record.raw_exertion.length > 0) {
+            compositeScore = symptomSum - exertionSum;
         }
 
         // Clean up temp fields
-        const { raw_symptoms, ...finalRecord } = record;
+        const { raw_symptoms, raw_exertion, ...finalRecord } = record;
 
         return {
             ...finalRecord,
-            symptom_score: calculatedSymptomScore
+            symptom_score: compositeScore // Storing in 'symptom_score' column for DB compatibility
         };
     });
 }

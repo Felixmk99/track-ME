@@ -71,6 +71,11 @@ export function CsvUploader() {
                     setMessage(`Successfully uploaded ${records.length} days of data!`)
                     router.refresh()
 
+                    // Redirect to dashboard after a short delay so user sees success state
+                    setTimeout(() => {
+                        window.location.href = '/dashboard' // Force full reload to ensure Navbar updates state
+                    }, 1500)
+
                 } catch (err: any) {
                     console.error(err)
                     setStatus('error')

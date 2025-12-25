@@ -80,7 +80,7 @@ export default function Navbar() {
                                 </>
                             )}
                             <Link href="/upload" className={getLinkClass('/upload')}>
-                                Upload Data
+                                {hasData ? 'Data' : 'Upload Data'}
                             </Link>
                         </>
                     )}

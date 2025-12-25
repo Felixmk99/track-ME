@@ -40,7 +40,7 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
     // -- 2. Determine Metric Config (Label, Color, Domain) --
     const metricConfig = useMemo(() => {
         switch (selectedMetric) {
-            case 'symptom_score': return { label: 'Symptom Score', color: '#fb7185', domain: [0, 3], unit: '', invert: true } // High = Bad
+            case 'symptom_score': return { label: 'Composite Score', color: '#fb7185', domain: [0, 10], unit: '', invert: true } // High = Bad
             case 'hrv': return { label: 'HRV', color: '#3b82f6', domain: ['auto', 'auto'], unit: 'ms', invert: false } // High = Good
             case 'resting_heart_rate': return { label: 'Resting HR', color: '#f59e0b', domain: ['auto', 'auto'], unit: 'bpm', invert: true } // High = Bad
             case 'exertion_score': return { label: 'Exertion', color: '#10b981', domain: [0, 10], unit: '', invert: false }
