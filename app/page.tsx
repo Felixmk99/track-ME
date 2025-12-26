@@ -180,7 +180,7 @@ export default function LandingPage() {
 
       <footer className="py-12 bg-muted/30 border-t">
         <div className="container px-6 text-center text-sm text-muted-foreground">
-          <p>&copy; {new Date().getFullYear()} Visible Analytics. Open Source & Community Driven.</p>
+          <p>&copy; {new Date().getFullYear()} Track-ME. Open Source & Community Driven.</p>
         </div>
       </footer>
     </div>

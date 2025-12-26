@@ -1,6 +1,6 @@
-# Visible Analytics
+# Track-ME
 
-**Visible Analytics** is a privacy-focused health dashboard designed for patients with Long Covid and ME/CFS. It empowers users to take control of their data by analyzing health trends from the **Visible** app.
+**Track-ME** is a privacy-focused health dashboard designed for patients with Long Covid and ME/CFS. It empowers users to take control of their data by analyzing health trends from the **Visible** app.
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 ![Next.js](https://img.shields.io/badge/Next.js-15-black)
@@ -37,8 +37,8 @@
 
 1.  **Clone the repo**
     ```bash
-    git clone https://github.com/yourusername/visible-analytics.git
-    cd visible-analytics
+    git clone https://github.com/yourusername/track-me.git
+    cd track-me
     ```
 
 2.  **Install dependencies**

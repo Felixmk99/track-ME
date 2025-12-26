@@ -30,7 +30,10 @@ interface DashboardReviewProps {
 
 // ... imports
 
+import { useLanguage } from "@/components/providers/language-provider"
+
 export default function DashboardClient({ data: initialData }: DashboardReviewProps) {
+    const { t, locale } = useLanguage()
     const [timeRange, setTimeRange] = useState<TimeRange>('30d')
     const [selectedMetrics, setSelectedMetrics] = useState<string[]>(['composite_score'])
     const [showTrend, setShowTrend] = useState(false)
@@ -94,10 +97,10 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
     const getMetricConfig = (key: string) => {
         // Known static configs
         switch (key) {
-            case 'composite_score': return { label: 'Track-ME Score', color: '#fb7185', domain: ['auto', 'auto'], unit: '', invert: true, description: "Your overall health snapshot based on symptom severity and daily activity.", better: "Lower is better" }
-            case 'hrv': return { label: 'HRV', color: '#3b82f6', domain: ['auto', 'auto'], unit: 'ms', invert: false, description: "Measures the variation in time between heartbeats. Higher values indicate better recovery.", better: "Higher is better" }
-            case 'resting_heart_rate': return { label: 'Resting HR', color: '#f59e0b', domain: ['auto', 'auto'], unit: 'bpm', invert: true, description: "Your average heart rate while at complete rest.", better: "Lower is better" }
-            case 'exertion_score': return { label: 'Exertion', color: '#10b981', domain: [0, 10], unit: '', invert: false, description: "Your self-reported level of physical and mental effort.", better: "Higher values indicate more activity" }
+            case 'composite_score': return { label: t('dashboard.metrics.composite_score.label'), color: '#fb7185', domain: ['auto', 'auto'], unit: '', invert: true, description: t('dashboard.metrics.composite_score.description'), better: t('dashboard.metrics.composite_score.better') }
+            case 'hrv': return { label: t('dashboard.metrics.hrv.label'), color: '#3b82f6', domain: ['auto', 'auto'], unit: 'ms', invert: false, description: t('dashboard.metrics.hrv.description'), better: t('dashboard.metrics.hrv.better') }
+            case 'resting_heart_rate': return { label: t('dashboard.metrics.resting_heart_rate.label'), color: '#f59e0b', domain: ['auto', 'auto'], unit: 'bpm', invert: true, description: t('dashboard.metrics.resting_heart_rate.description'), better: t('dashboard.metrics.resting_heart_rate.better') }
+            case 'exertion_score': return { label: t('dashboard.metrics.exertion_score.label'), color: '#10b981', domain: [0, 10], unit: '', invert: false, description: t('dashboard.metrics.exertion_score.description'), better: t('dashboard.metrics.exertion_score.better') }
         }
 
         // Dynamic Config
@@ -281,9 +284,9 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
             {/* Header Area */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h2 className="text-2xl font-bold text-foreground tracking-tight">Illness Severity Trend</h2>
+                    <h2 className="text-2xl font-bold text-foreground tracking-tight">{t('dashboard.title')}</h2>
                     <p className="text-muted-foreground text-sm">
-                        Correlation between your {selectedMetrics.map(m => getMetricConfig(m).label).join(', ')} and daily activities.
+                        {t('dashboard.subtitle_prefix')} {selectedMetrics.map(m => getMetricConfig(m).label).join(', ')} {t('dashboard.subtitle_suffix')}
                     </p>
                 </div>
                 <div className="bg-muted/30 p-1 rounded-lg flex items-center gap-1 self-start">
@@ -296,7 +299,10 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
                                 : 'text-muted-foreground hover:text-foreground'
                                 }`}
                         >
-                            {r === 'all' ? 'All Time' : r.toUpperCase()}
+                            {(() => {
+                                const map: Record<string, string> = { '7d': 'd7', '30d': 'd30', '3m': 'm3', 'all': 'all' }
+                                return t(`dashboard.time_ranges.${map[r]}` as any)
+                            })()}
                         </button>
                     ))}
 
@@ -322,7 +328,7 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
                                         format(dateRange.from, "LLL dd, y")
                                     )
                                 ) : (
-                                    <span>Custom</span>
+                                    <span>{t('common.custom')}</span>
                                 )}
                             </Button>
                         </PopoverTrigger>
@@ -364,7 +370,7 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
                                                         <Info className="h-3 w-3 opacity-50 hover:opacity-100 cursor-help transition-opacity" />
                                                     </TooltipTrigger>
                                                     <TooltipContent className="max-w-[200px] text-xs">
-                                                        <p className="font-semibold mb-1">About {stat.label}</p>
+                                                        <p className="font-semibold mb-1">{t('dashboard.metrics.about')} {stat.label}</p>
                                                         <p className="mb-2">{(getMetricConfig(stat.key) as any).description}</p>
                                                         <p className="font-medium text-muted-foreground">{(getMetricConfig(stat.key) as any).better}</p>
                                                     </TooltipContent>
@@ -374,7 +380,7 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <span className="text-xl font-bold tracking-tight">
-                                            {stat.trend === 'stable' ? 'Stable' : (stat.trend === 'improving' ? 'Improving' : 'Declining')}
+                                            {stat.trend === 'stable' ? t('dashboard.status.stable') : (stat.trend === 'improving' ? t('dashboard.status.improving') : t('dashboard.status.declining'))}
                                         </span>
                                         <Badge variant="outline" className={`
                                             ${stat.trend === 'improving' ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400' : ''}
@@ -395,18 +401,18 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
                     <div className="flex items-center gap-4 self-start">
                         <div className="flex items-center space-x-2">
                             <Switch id="trend-mode" checked={showTrend} onCheckedChange={setShowTrend} />
-                            <Label htmlFor="trend-mode" className="text-xs text-muted-foreground hidden md:block">Trend</Label>
+                            <Label htmlFor="trend-mode" className="text-xs text-muted-foreground hidden md:block">{t('dashboard.trend_mode')}</Label>
                         </div>
 
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <Button variant="outline" size="sm" className="h-8 text-xs w-[200px] justify-between">
-                                    {selectedMetrics.length === 1 ? getMetricConfig(selectedMetrics[0]).label : `${selectedMetrics.length} Selected`}
+                                    {selectedMetrics.length === 1 ? getMetricConfig(selectedMetrics[0]).label : `${selectedMetrics.length} ${t('dashboard.metrics_selected')}`}
                                     <ChevronDown className="h-3 w-3 opacity-50" />
                                 </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent className="w-[200px] max-h-[300px] overflow-y-auto">
-                                <DropdownMenuLabel>Metrics (Max 2)</DropdownMenuLabel>
+                                <DropdownMenuLabel>{t('dashboard.metrics_dropdown')}</DropdownMenuLabel>
                                 <DropdownMenuSeparator />
                                 {availableMetrics.map((m) => {
                                     const isSelected = selectedMetrics.includes(m.value)
@@ -578,60 +584,15 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
                 </CardContent>
             </Card>
 
-            {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card className="bg-card/50 border-0 shadow-sm md:shadow-none bg-zinc-50/50 dark:bg-zinc-900/30">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <span className="text-sm font-medium text-muted-foreground">{multiStats[0]?.label || 'Metric'} Average</span>
-                        <Activity className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">{multiStats[0]?.avg.toFixed(1) || '0.0'}<span className="text-sm font-normal text-muted-foreground ml-1">{multiStats[0]?.unit}</span></div>
-                        <p className="text-xs text-muted-foreground mt-1">Based on {timeRange} timeframe</p>
-                    </CardContent>
-                </Card>
-                <Card className="bg-card/50 border-0 shadow-sm md:shadow-none bg-zinc-50/50 dark:bg-zinc-900/30">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <span className="text-sm font-medium text-muted-foreground">Latest Reading</span>
-                        <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        {/* We need to get last value. multiStats doesn't return last. I should add it.
-                            OR re-calculate it here cheaply. 
-                            Actually let's just grab it from chartData or processedData. 
-                        */}
-                        <div className="text-2xl font-bold">
-                            {(
-                                Number(
-                                    selectedMetrics.length > 0
-                                        ? (processedData[processedData.length - 1]?.[selectedMetrics[0]]
-                                            ?? processedData[processedData.length - 1]?.custom_metrics?.[selectedMetrics[0]])
-                                        : 0
-                                ) || 0
-                            ).toFixed(1)}
-                            <span className="text-sm font-normal text-muted-foreground ml-1">{multiStats[0]?.unit}</span></div>
-                        <p className="text-xs text-muted-foreground mt-1">Last recorded entry</p>
-                    </CardContent>
-                </Card>
-                <Card className="bg-card/50 border-0 shadow-sm md:shadow-none bg-zinc-50/50 dark:bg-zinc-900/30">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <span className="text-sm font-medium text-muted-foreground">Rest Days</span>
-                        <Moon className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">2 <span className="text-sm font-normal text-muted-foreground ml-1">days</span></div>
-                        <p className="text-xs text-muted-foreground mt-1">Recommended based on load</p>
-                    </CardContent>
-                </Card>
-            </div>
+
 
             <div className="flex justify-center pt-8 pb-4">
                 <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-zinc-100 dark:bg-zinc-900 rounded-full border border-zinc-200 dark:border-zinc-800">
                     <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                    <span className="text-xs font-medium text-muted-foreground">Synced with Visible App</span>
+                    <span className="text-xs font-medium text-muted-foreground">{t('dashboard.charts.synced')}</span>
                 </div>
             </div>
-            <p className="text-center text-[10px] text-muted-foreground opacity-60 pb-8">Data encrypted on device • Last updated just now</p>
+            <p className="text-center text-[10px] text-muted-foreground opacity-60 pb-8">{t('dashboard.charts.encrypted')}</p>
 
         </div>
     )

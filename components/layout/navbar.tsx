@@ -17,11 +17,14 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { useLanguage } from "@/components/providers/language-provider"
+import { LanguageSwitcher } from "./language-switcher"
 
 export default function Navbar() {
     const [user, setUser] = useState<any>(null)
     const [hasData, setHasData] = useState<boolean>(false)
     const [mounted, setMounted] = useState(false)
+    const { t } = useLanguage()
     const pathname = usePathname()
     const router = useRouter()
     const supabase = createClient()
@@ -70,9 +73,9 @@ export default function Navbar() {
     return (
         <nav className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
             <div className="container mx-auto px-4 sm:px-6 lg:px-8 flex h-16 items-center">
-                <Link href="/" className="mr-6 flex items-center space-x-2">
+                <Link href={mounted && user ? "/dashboard" : "/"} className="mr-6 flex items-center space-x-2">
                     <Activity className="h-6 w-6 text-primary" />
-                    <span className="font-bold inline-block text-lg">Visible Analytics</span>
+                    <span className="font-bold inline-block text-lg">Track-ME</span>
                 </Link>
 
                 {/* Desktop Menu */}
@@ -82,21 +85,22 @@ export default function Navbar() {
                             {hasData && (
                                 <>
                                     <Link href="/dashboard" className={getLinkClass('/dashboard')}>
-                                        Dashboard
+                                        {t('navbar.dashboard')}
                                     </Link>
                                     <Link href="/experiments" className={getLinkClass('/experiments')}>
-                                        Experiments
+                                        {t('navbar.experiments')}
                                     </Link>
                                 </>
                             )}
                             <Link href="/upload" className={getLinkClass('/upload')}>
-                                {hasData ? 'Data' : 'Upload Data'}
+                                {hasData ? t('navbar.data') : t('navbar.upload_data')}
                             </Link>
                         </>
                     )}
                 </div>
 
                 <div className="ml-auto flex items-center space-x-4">
+                    <LanguageSwitcher />
                     {!mounted ? (
                         <div className="w-16 h-8" />
                     ) : user ? (
@@ -122,7 +126,7 @@ export default function Navbar() {
                                     <DropdownMenuSeparator />
                                     <DropdownMenuGroup>
                                         <DropdownMenuItem asChild>
-                                            <Link href="/settings">Settings</Link>
+                                            <Link href="/settings">{t('navbar.settings')}</Link>
                                         </DropdownMenuItem>
                                     </DropdownMenuGroup>
                                     <DropdownMenuSeparator />
@@ -133,7 +137,7 @@ export default function Navbar() {
                                         router.push('/')
                                         router.refresh()
                                     }}>
-                                        Log out
+                                        {t('navbar.logout')}
                                     </DropdownMenuItem>
                                 </DropdownMenuContent>
                             </DropdownMenu>
@@ -141,10 +145,10 @@ export default function Navbar() {
                     ) : (
                         <>
                             <Link href="/login" className="text-sm font-medium transition-colors hover:text-primary">
-                                Log In
+                                {t('navbar.login')}
                             </Link>
                             <Button asChild size="sm">
-                                <Link href="/signup">Sign Up</Link>
+                                <Link href="/signup">{t('navbar.signup')}</Link>
                             </Button>
                         </>
                     )}
