@@ -21,7 +21,9 @@ export const en: Dictionary = {
         login: "Log In",
         signup: "Sign Up",
         profile: "Profile",
-        welcome: "Welcome"
+        welcome: "Welcome",
+        missing_steps_hint: "Missing Steps?",
+        missing_steps_tooltip: "Upload Apple Health step data to improve your Health Score accuracy."
     },
     footer: {
         built_by: "Built by Felix Kania",
@@ -91,7 +93,14 @@ export const en: Dictionary = {
                 better: "Higher values indicate more activity"
             },
             trend: "Trend",
-            about: "About"
-        }
+            about: "About",
+            crashes: {
+                label: "Crashes (PEM)",
+                description: "Days marked as 'Crash' in your Visible logs.",
+                better: "Fewer is better"
+            }
+        },
+        crash_mode: "PEM",
+        pem_days: "PEM Days"
     }
 }

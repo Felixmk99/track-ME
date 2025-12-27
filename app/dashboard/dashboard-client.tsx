@@ -2,7 +2,18 @@
 
 import React, { useState, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Area, AreaChart, ComposedChart, Line, CartesianGrid, ResponsiveContainer, XAxis, YAxis, Tooltip } from "recharts"
+import {
+    ResponsiveContainer,
+    ComposedChart,
+    Area,
+    Line,
+    XAxis,
+    YAxis,
+    CartesianGrid,
+    Tooltip,
+    ReferenceArea,
+    ReferenceLine
+} from 'recharts'
 import { Activity, Moon, TrendingUp, TrendingDown, Minus, Info } from "lucide-react"
 import { format, subDays, isAfter, parseISO } from "date-fns"
 import { Button } from '@/components/ui/button'
@@ -32,6 +43,7 @@ interface DashboardReviewProps {
 // ... imports
 
 import { useLanguage } from "@/components/providers/language-provider"
+import { PEMAnalysis } from "@/components/dashboard/pem-analysis"
 
 export default function DashboardClient({ data: initialData }: DashboardReviewProps) {
     const { t, locale } = useLanguage()
@@ -39,34 +51,41 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
     const [selectedMetrics, setSelectedMetrics] = useState<string[]>(['adjusted_score'])
     const [isCompareMode, setIsCompareMode] = useState(false)
     const [showTrend, setShowTrend] = useState(false)
+    const [showCrashes, setShowCrashes] = useState(false)
     const [dateRange, setDateRange] = useState<DateRange | undefined>({
         from: subDays(new Date(), 30),
         to: new Date(),
     })
 
+    // 0. Calculate Visible Range separate from Data Processing
+    const visibleRange = useMemo(() => {
+        const now = new Date()
+        let start = subDays(now, 30)
+        let end = now
+
+        if (timeRange === '7d') start = subDays(now, 7)
+        if (timeRange === '30d') start = subDays(now, 30)
+        if (timeRange === '3m') start = subDays(now, 90)
+        if (timeRange === 'all') start = subDays(now, 365 * 5)
+
+        if (timeRange === 'custom' && dateRange?.from) {
+            start = startOfDay(dateRange.from)
+            end = dateRange.to ? endOfDay(dateRange.to) : endOfDay(dateRange.from)
+        }
+        return { start, end }
+    }, [timeRange, dateRange])
+
     // -- 1. Process Data & Time Filtering --
     const processedData = useMemo(() => {
         if (!initialData || initialData.length === 0) return generateMockData()
 
-        const now = new Date()
-        let startDate = subDays(now, 30)
-        let endDate = now
-
-        if (timeRange === '7d') startDate = subDays(now, 7)
-        if (timeRange === '30d') startDate = subDays(now, 30)
-        if (timeRange === '3m') startDate = subDays(now, 90)
-        if (timeRange === 'all') startDate = subDays(now, 365 * 5)
-
-        if (timeRange === 'custom' && dateRange?.from) {
-            startDate = startOfDay(dateRange.from)
-            endDate = dateRange.to ? endOfDay(dateRange.to) : endOfDay(dateRange.from)
-        }
+        const { start, end } = visibleRange
 
         // 1. Filter Data First
         const filtered = initialData
             .filter(item => {
                 const itemDate = parseISO(item.date)
-                return isAfter(itemDate, startDate) && (timeRange === 'custom' ? itemDate <= endDate : true)
+                return isAfter(itemDate, start) && (timeRange === 'custom' ? itemDate <= end : true)
             })
             .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
@@ -186,41 +205,114 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
     // -- 1b. Enhanced Chart Data (Trend Line) --
     // Only calculate trend for the PRIMARY metric to avoid clutter
     // -- 1b. Enhanced Chart Data (Trend Line) --
+    // -- 1b. Enhanced Chart Data (Trend Line) --
+    // Only calculate trend for the PRIMARY metric to avoid clutter
     const chartData = useMemo(() => {
         const data = [...processedData]
         if (!showTrend || data.length < 2 || selectedMetrics.length === 0) return data
 
         const trendsByIndex = new Map<number, any>()
 
+        // Helper to retrieve value safely (including computed fields like adjusted_score)
+        const getValue = (d: any, key: string) => {
+            // Check top-level (like adjusted_score, step_count)
+            if (d[key] !== undefined) return d[key]
+            // Check custom_metrics (like composite_score)
+            if (d.custom_metrics?.[key] !== undefined) return d.custom_metrics[key]
+            return null
+        }
+
         selectedMetrics.forEach(metric => {
-            const points: { t: number, v: number, i: number }[] = []
-            data.forEach((d, i) => {
-                const val = (d[metric] !== undefined)
-                    ? d[metric]
-                    : (d.custom_metrics?.[metric])
+            // Determine Trend Type Strategy
+            let strategy: 'regression' | 'moving_average' = 'regression'
+            let maWindow = 3
 
-                if (typeof val === 'number' && !isNaN(val)) {
-                    points.push({ t: new Date(d.date).getTime(), v: val, i })
-                }
-            })
+            if (['30d'].includes(timeRange)) {
+                strategy = 'moving_average'
+                maWindow = 5
+            } else if (['3m'].includes(timeRange)) {
+                strategy = 'moving_average'
+                maWindow = 7
+            } else if (timeRange === 'all') {
+                strategy = 'moving_average'
+                maWindow = 30
+            } else {
+                // 7d -> Linear Regression
+                strategy = 'regression'
+            }
 
-            if (points.length < 2) return
+            if (strategy === 'regression') {
+                // LINEAR REGRESSION (Viewport only)
+                const points: { t: number, v: number, i: number }[] = []
+                data.forEach((d, i) => {
+                    const val = getValue(d, metric)
+                    if (typeof val === 'number' && !isNaN(val)) {
+                        points.push({ t: new Date(d.date).getTime(), v: val, i })
+                    }
+                })
 
-            // User requested: Trend line must start all the way on the left.
-            // Moving Average naturally has a lag (missing start).
-            // Linear Regression covers the full range naturally.
-            // We'll use Linear Regression for ALL timeframes to ensure edge-to-edge visibility.
-            // If the user later requests "curved" trends for long periods, we can use LOESS, but for now Regression fixes the "gap" issue.
+                if (points.length < 2) return
 
-            const regressionPoints = points.map(p => [p.t, p.v])
-            const regression = linearRegression(regressionPoints)
-            const predict = linearRegressionLine(regression)
+                const regressionPoints = points.map(p => [p.t, p.v])
+                const regression = linearRegression(regressionPoints)
+                const predict = linearRegressionLine(regression)
 
-            data.forEach((d, i) => {
-                const val = predict(new Date(d.date).getTime())
-                if (!trendsByIndex.has(i)) trendsByIndex.set(i, {})
-                trendsByIndex.get(i)![`trend_${metric}`] = val
-            })
+                data.forEach((d, i) => {
+                    const val = predict(new Date(d.date).getTime())
+                    if (!trendsByIndex.has(i)) trendsByIndex.set(i, {})
+                    trendsByIndex.get(i)![`trend_${metric}`] = val
+                })
+            } else {
+                // MOVING AVERAGE (Use Full History for Warmup)
+                // 1. We need the full history sorted ascending
+                // initialData is typically sorted by DB default, but let's ensure safety or find relevant partial slice
+                // Actually, initialData contains everything. 
+                // We need to calculate MA for every day in 'data' (processedData), using 'initialData' lookback.
+
+                // Optimization: Create a quick lookup or sorted array from initialData
+                // Note: 'processedData' has computed fields (adjusted_score) that might NOT be in 'initialData'.
+                // We must ensure we can compute the value from initialData dynamically if it's missing.
+                // Re-using the logic from Step 1 (Adjusted Score calculation) might be duplicated code.
+                // A simpler way: 'initialData' generally has the same structure if we just computed adjusted_score for it?
+                // Wait, 'processedData' IS 'initialData' + filtering + computed fields. 
+                // We should probably compute adjusted_score for ALL initialData once to make this easier? 
+                // BUT: 'step normalization' relies on the viewport (min/max steps of current view).
+                // Using Viewport Normalization for Global MA is tricky. 
+                // User Rule: "Track-ME Score = Symptom - Steps".
+                // If we use Global MA, we should probably use Global Normalization or Local Normalization?
+                // The user sees Local Normalization in the graph. The MA should probably smooth the LOCAL values.
+                // IF we smooth local values, we get the "lag" at the start. 
+                // SOLUTION: Backfill logic. 
+                // Using the first available point to padded the start is a common trick.
+                // OR: Just accept the lag for MA?
+                // User said: "not starred all the way on the left" was a complaint before.
+                // But now they asked for MA specifically. MA inherently has lag.
+                // Better approach: Calculate MA on `data` (processedData). For the first N points (where MA is partial), 
+                // strictly use a smaller window or fall back to the raw value or a partial average.
+
+                // Let's implement Partial Moving Average for the start of the series to avoid Null gaps.
+
+                const validPoints = data.map((d, i) => ({
+                    val: getValue(d, metric),
+                    date: d.date,
+                    index: i
+                })).filter(p => typeof p.val === 'number' && !isNaN(p.val))
+
+                validPoints.forEach((p, idx) => {
+                    // Determine window for this point
+                    // We want: Average of [p.val, and previous (maWindow - 1) points]
+                    const startIdx = Math.max(0, idx - maWindow + 1)
+                    const windowSlice = validPoints.slice(startIdx, idx + 1)
+
+                    if (windowSlice.length === 0) return
+
+                    const sum = windowSlice.reduce((acc, curr) => acc + (curr.val as number), 0)
+                    const avg = sum / windowSlice.length
+
+                    if (!trendsByIndex.has(p.index)) trendsByIndex.set(p.index, {})
+                    trendsByIndex.get(p.index)![`trend_${metric}`] = avg
+                })
+            }
         })
 
         return data.map((d, i) => ({
@@ -362,6 +454,11 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
                 else compareTrendStatus = config.invert ? 'improving' : 'worsening'
             }
 
+            // 5. Crash Analysis (PEM)
+            // Count days with Crash=1
+            const crashCount = processedData.filter(d => d.custom_metrics?.Crash === 1 || d.custom_metrics?.Crash === "1").length
+            const prevCrashCount = prevData.filter(d => d.custom_metrics?.Crash === 1 || d.custom_metrics?.Crash === "1").length
+
             return {
                 key: metric,
                 label: config.label,
@@ -375,6 +472,10 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
                 // Badge 2: Comparison Trend (Change vs History)
                 compareTrendPct,
                 compareTrendStatus,
+
+                // Crash Data
+                crashCount,
+                prevCrashCount
             }
         })
     }, [processedData, initialData, selectedMetrics, timeRange, dateRange])
@@ -481,6 +582,8 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
                 </div>
             </div>
 
+
+
             {/* Main Chart Card */}
             <Card className="border-border/50 shadow-sm relative overflow-hidden">
                 <CardHeader className="flex flex-row items-start justify-between pb-2">
@@ -543,6 +646,25 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
                                                 </>
                                             )}
                                         </Badge>
+
+                                        {/* PEM STATS - ADDED ALONGSIDE */}
+                                        {showCrashes && (
+                                            <>
+                                                <div className="w-px h-6 bg-border mx-1" /> {/* Divider */}
+
+                                                <Badge variant="outline" className={cn(
+                                                    "border-zinc-400 bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100", // Neutral styling as per request
+                                                    stat.crashCount > 0 && "border-red-200 bg-red-50 text-red-900 dark:bg-red-900/20 dark:text-red-300"
+                                                )}>
+                                                    <Activity className="w-3 h-3 mr-1" />
+                                                    {stat.crashCount} PEM Days
+                                                </Badge>
+
+                                                <Badge variant="outline" className="text-muted-foreground border-dashed">
+                                                    vs Prev: {stat.prevCrashCount}
+                                                </Badge>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
                             ))}
@@ -564,6 +686,11 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
                                 }}
                             />
                             <Label htmlFor="compare-mode" className="text-xs text-muted-foreground hidden md:block">Compare</Label>
+                        </div>
+
+                        <div className="flex items-center space-x-2">
+                            <Switch id="crash-mode" checked={showCrashes} onCheckedChange={setShowCrashes} />
+                            <Label htmlFor="crash-mode" className="text-xs text-muted-foreground hidden md:block">{t('dashboard.crash_mode')}</Label>
                         </div>
 
                         <div className="flex items-center space-x-2">
@@ -663,6 +790,24 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
                                 minTickGap={30}
                             />
 
+                            {/* Crash Visualization: Dark Grey Vertical Overlay for Visiblity */}
+                            {showCrashes && chartData.map((d: any) => {
+                                if (d.custom_metrics?.Crash == 1 || d.custom_metrics?.crash == 1) {
+                                    return (
+                                        <React.Fragment key={d.date}>
+                                            <ReferenceArea
+                                                x1={d.date}
+                                                x2={d.date}
+                                                strokeOpacity={0}
+                                                fill="#ef4444"
+                                                fillOpacity={0.1}
+                                            />
+                                        </React.Fragment>
+                                    )
+                                }
+                                return null
+                            })}
+
                             {/* Dynamic Y Axes */}
                             {selectedMetrics.map((metric, index) => {
                                 const config = getMetricConfig(metric)
@@ -727,61 +872,74 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
                                     return (
                                         <Area
                                             key={metric}
-                                            yAxisId={metric}
                                             type="monotone"
-                                            dataKey={(d) => {
-                                                const val = d[metric] ?? d.custom_metrics?.[metric];
-                                                return (val === null || val === undefined || isNaN(val)) ? null : val;
-                                            }}
-                                            name={metric}
+                                            dataKey={metric}
                                             stroke={config.color}
-                                            strokeOpacity={showTrend ? 0.3 : 1}
-                                            fillOpacity={showTrend ? 0.1 : 1}
-                                            fill={'url(#colorMetric-' + metric + ')'}
-                                            strokeWidth={3}
-                                            connectNulls={true}
+                                            fill={`url(#colorMetric-${metric})`}
+                                            strokeWidth={2}
+                                            activeDot={{ r: 6 }}
+                                            yAxisId={metric}
                                         />
                                     )
                                 } else {
                                     return (
                                         <Line
                                             key={metric}
-                                            yAxisId={metric}
                                             type="monotone"
-                                            dataKey={(d) => {
-                                                const val = d[metric] ?? d.custom_metrics?.[metric];
-                                                return (val === null || val === undefined || isNaN(val)) ? null : val;
-                                            }}
-                                            name={metric}
+                                            dataKey={metric}
                                             stroke={config.color}
-                                            strokeOpacity={showTrend ? 0.3 : 1}
                                             strokeWidth={2}
                                             dot={false}
-                                            connectNulls={true}
+                                            activeDot={{ r: 6 }}
+                                            yAxisId={metric}
                                         />
                                     )
                                 }
                             })}
 
+                            {/* Crash Lines (On Top) */}
+                            {showCrashes && chartData.map((d: any) => {
+                                if (d.custom_metrics?.Crash == 1 || d.custom_metrics?.crash == 1) {
+                                    return (
+                                        <ReferenceLine
+                                            key={`line-${d.date}`}
+                                            x={d.date}
+                                            stroke="#ef4444"
+                                            strokeWidth={2}
+                                            opacity={1}
+                                            label={{ position: 'insideTop', value: 'PEM', fill: '#ef4444', fontSize: 10, fontWeight: 'bold' }}
+                                        />
+                                    )
+                                }
+                                return null
+                            })}
+
+                            {/* Render Trend Lines */}
                             {showTrend && selectedMetrics.map(metric => (
                                 <Line
-                                    key={'trend-' + metric}
-                                    yAxisId={metric}
-                                    type="monotone"
-                                    dataKey={'trend_' + metric}
+                                    key={`trend_${metric}`}
+                                    dataKey={`trend_${metric}`}
                                     stroke={getMetricConfig(metric).color}
-                                    strokeWidth={4}
+                                    strokeWidth={2}
                                     strokeDasharray="5 5"
                                     dot={false}
-                                    activeDot={false}
-                                    opacity={1}
+                                    opacity={0.6}
+                                    yAxisId={metric}
+                                    isAnimationActive={false}
                                 />
-                            ))}</ComposedChart>
+                            ))}
+
+                        </ComposedChart>
                     </ResponsiveContainer>
                 </CardContent>
             </Card>
 
-
+            {/* PEM (Crash) Trigger Analysis */}
+            {showCrashes && (
+                <div className="mt-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <PEMAnalysis data={initialData} filterRange={visibleRange} />
+                </div>
+            )}
 
             <div className="flex justify-center pt-8 pb-4">
                 <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-zinc-100 dark:bg-zinc-900 rounded-full border border-zinc-200 dark:border-zinc-800">

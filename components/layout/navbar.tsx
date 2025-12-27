@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { Activity } from "lucide-react"
+import { Activity, Footprints } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
@@ -19,12 +19,19 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useLanguage } from "@/components/providers/language-provider"
 import { LanguageSwitcher } from "./language-switcher"
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 export default function Navbar() {
     const [user, setUser] = useState<any>(null)
     const [hasData, setHasData] = useState<boolean>(false)
+    const [hasSteps, setHasSteps] = useState<boolean>(false)
     const [mounted, setMounted] = useState(false)
-    const { t } = useLanguage()
+    const { t, locale } = useLanguage()
     const pathname = usePathname()
     const router = useRouter()
     const supabase = createClient()
@@ -42,6 +49,15 @@ export default function Navbar() {
                     .eq('user_id', user.id)
 
                 setHasData((count || 0) > 0)
+
+                // Check if user has step data
+                const { count: stepCount } = await supabase
+                    .from('health_metrics')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('user_id', user.id)
+                    .gt('step_count', 0)
+
+                setHasSteps((stepCount || 0) > 0)
             }
         }
         checkUserAndData()
@@ -95,6 +111,25 @@ export default function Navbar() {
                             <Link href="/upload" className={getLinkClass('/upload')}>
                                 {hasData ? t('navbar.data') : t('navbar.upload_data')}
                             </Link>
+
+                            {/* Missing Steps Hint */}
+                            {hasData && !hasSteps && (
+                                <TooltipProvider>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950/20" asChild>
+                                                <Link href="/upload?tab=apple">
+                                                    <Footprints className="w-4 h-4" />
+                                                    <span className="hidden lg:inline text-xs">{t('navbar.missing_steps_hint')}</span>
+                                                </Link>
+                                            </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                            <p>{t('navbar.missing_steps_tooltip')}</p>
+                                        </TooltipContent>
+                                    </Tooltip>
+                                </TooltipProvider>
+                            )}
                         </>
                     )}
                 </div>

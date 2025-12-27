@@ -22,6 +22,8 @@ export interface Dictionary {
         signup: string
         profile: string
         welcome: string
+        missing_steps_hint: string
+        missing_steps_tooltip: string
     }
     footer: {
         built_by: string
@@ -92,6 +94,13 @@ export interface Dictionary {
             }
             trend: string
             about: string
+            crashes: {
+                label: string
+                description: string
+                better: string
+            }
         }
+        crash_mode: string
+        pem_days: string
     }
 }

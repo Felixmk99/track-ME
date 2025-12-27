@@ -21,7 +21,9 @@ export const de: Dictionary = {
         login: "Anmelden",
         signup: "Registrieren",
         profile: "Profil",
-        welcome: "Willkommen"
+        welcome: "Willkommen",
+        missing_steps_hint: "Schritte fehlen?",
+        missing_steps_tooltip: "Lade Apple Health Schrittdaten hoch, um die Genauigkeit deines Gesundheits-Scores zu verbessern."
     },
     footer: {
         built_by: "Entwickelt von Felix Kania",
@@ -91,7 +93,14 @@ export const de: Dictionary = {
                 better: "Höhere Werte zeigen mehr Aktivität"
             },
             trend: "Trend",
-            about: "Über"
-        }
+            about: "Über",
+            crashes: {
+                label: "Crash (PEM)",
+                description: "Tage, die in Visible als 'Crash' markiert wurden.",
+                better: "Weniger ist besser"
+            }
+        },
+        crash_mode: "PEM",
+        pem_days: "PEM-Tage"
     }
 }

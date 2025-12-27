@@ -8,7 +8,7 @@ import { format, parseISO } from "date-fns"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 
 interface DataEntry {
     id: string
@@ -24,6 +24,8 @@ export default function DataManagementClient({ initialData, hasData: initialHasD
     const [dataLog, setDataLog] = useState<DataEntry[]>(initialData)
     const [hasData, setHasData] = useState(initialHasData)
     const supabase = createClient()
+    const searchParams = useSearchParams()
+    const initialTab = searchParams.get('tab') === 'apple' ? 'apple' : 'visible'
     const router = useRouter()
 
     const handleDelete = async (id: string) => {
@@ -81,7 +83,7 @@ export default function DataManagementClient({ initialData, hasData: initialHasD
                 </div>
 
                 {/* Upload Section */}
-                <Tabs defaultValue="visible" className="w-full max-w-3xl mx-auto">
+                <Tabs defaultValue={initialTab} className="w-full max-w-3xl mx-auto">
                     <TabsList className="grid w-full grid-cols-2 mb-8 h-12 rounded-full p-1 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800">
                         <TabsTrigger value="visible" className="rounded-full data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-800 data-[state=active]:text-rose-500 data-[state=active]:shadow-sm transition-all duration-300">
                             <Activity className="w-4 h-4 mr-2" />
