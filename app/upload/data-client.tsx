@@ -2,8 +2,10 @@
 
 import { useState } from 'react'
 import { CsvUploader } from "@/components/upload/csv-uploader"
-import { Lock, Trash2, Calendar, FileText } from "lucide-react"
+import { XmlUploader } from "@/components/upload/xml-uploader"
+import { Lock, Trash2, Calendar, FileText, Smartphone, Activity } from "lucide-react"
 import { format, parseISO } from "date-fns"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { useRouter } from "next/navigation"
@@ -78,8 +80,30 @@ export default function DataManagementClient({ initialData, hasData: initialHasD
                     </div>
                 </div>
 
-                {/* Upload Section - Always Visible but styled differently if data exists? Keep prominent for updates */}
-                <CsvUploader />
+                {/* Upload Section */}
+                <Tabs defaultValue="visible" className="w-full max-w-3xl mx-auto">
+                    <TabsList className="grid w-full grid-cols-2 mb-8 h-12 rounded-full p-1 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800">
+                        <TabsTrigger value="visible" className="rounded-full data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-800 data-[state=active]:text-rose-500 data-[state=active]:shadow-sm transition-all duration-300">
+                            <Activity className="w-4 h-4 mr-2" />
+                            Visible App (CSV)
+                        </TabsTrigger>
+                        <TabsTrigger
+                            value="apple"
+                            disabled={!hasData}
+                            className="rounded-full data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-800 data-[state=active]:text-blue-500 data-[state=active]:shadow-sm transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <Smartphone className="w-4 h-4 mr-2" />
+                            Apple Health Steps (XML)
+                            {!hasData && <span className="ml-2 text-[10px] text-zinc-500">(Requires Health Data)</span>}
+                        </TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="visible" className="mt-0 animate-in fade-in-50 duration-500 slide-in-from-bottom-2">
+                        <CsvUploader />
+                    </TabsContent>
+                    <TabsContent value="apple" className="mt-0 animate-in fade-in-50 duration-500 slide-in-from-bottom-2">
+                        <XmlUploader />
+                    </TabsContent>
+                </Tabs>
 
                 {/* Data Log Section - Only if Has Data */}
                 {hasData && (
@@ -101,6 +125,7 @@ export default function DataManagementClient({ initialData, hasData: initialHasD
                                         <tr>
                                             <th className="px-6 py-3 font-medium">Date</th>
                                             <th className="px-6 py-3 font-medium">HRV</th>
+                                            <th className="px-6 py-3 font-medium">Steps</th>
                                             <th className="px-6 py-3 font-medium">Comp. Score</th>
                                             <th className="px-6 py-3 font-medium">Exertion</th>
                                             <th className="px-6 py-3 font-medium text-right">Action</th>
@@ -115,6 +140,7 @@ export default function DataManagementClient({ initialData, hasData: initialHasD
                                                         {format(parseISO(entry.date), 'MMM d, yyyy')}
                                                     </td>
                                                     <td className="px-6 py-4 text-muted-foreground">{entry.hrv ? `${entry.hrv} ms` : '-'}</td>
+                                                    <td className="px-6 py-4 text-muted-foreground">{(entry as any).step_count ? (entry as any).step_count.toLocaleString() : '-'}</td>
                                                     <td className="px-6 py-4">
                                                         {(() => {
                                                             const score = entry.custom_metrics?.composite_score ?? entry.symptom_score;

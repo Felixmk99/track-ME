@@ -28,9 +28,9 @@ export const de: Dictionary = {
         contact: "Kontakt & Ideen: felixmkania@gmail.com"
     },
     dashboard: {
-        title: "Trend der Krankheitsschwere",
-        subtitle_prefix: "Korrelation zwischen",
-        subtitle_suffix: "und täglichen Aktivitäten.",
+        title: "Gesundheitstrends",
+        subtitle_prefix: "Verlauf deiner",
+        subtitle_suffix: "im Zeitverlauf.",
         trend_mode: "Trend",
         metrics_dropdown: "Metriken (Max 2)",
         metrics_selected: "Ausgewählt",
@@ -61,8 +61,13 @@ export const de: Dictionary = {
         },
         metrics: {
             composite_score: {
+                label: "Symptom Score",
+                description: "Gesamtüberblick deiner Gesundheit basierend auf Symptom-Schwere.",
+                better: "Niedriger ist besser"
+            },
+            adjusted_score: {
                 label: "Track-ME Score",
-                description: "Gesamtüberblick deiner Gesundheit basierend auf Symptom-Schwere und Aktivität.",
+                description: "Gesundheits-Score angepasst an tägliche Schritte.",
                 better: "Niedriger ist besser"
             },
             hrv: {
@@ -74,6 +79,11 @@ export const de: Dictionary = {
                 label: "Ruhepuls",
                 description: "Dein durchschnittlicher Puls in vollständiger Ruhe.",
                 better: "Niedriger ist besser"
+            },
+            step_count: {
+                label: "Schritte",
+                description: "Tägliche Schrittzahl (Apple Health).",
+                better: "Höher ist besser"
             },
             exertion_score: {
                 label: "Belastung",

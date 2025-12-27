@@ -65,12 +65,22 @@ export interface Dictionary {
                 description: string
                 better: string
             }
+            adjusted_score: {
+                label: string
+                description: string
+                better: string
+            }
             hrv: {
                 label: string
                 description: string
                 better: string
             }
             resting_heart_rate: {
+                label: string
+                description: string
+                better: string
+            }
+            step_count: {
                 label: string
                 description: string
                 better: string

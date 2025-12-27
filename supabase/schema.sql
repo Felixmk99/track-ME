@@ -9,6 +9,7 @@ create table if not exists health_metrics (
   symptom_score float, -- Composite Score (Sum Symptoms - Sum Exertion). No Range Limit.
   hrv float,
   resting_heart_rate int,
+  step_count int, -- Daily Step Count from Apple Health
   exertion_score float,
   custom_metrics jsonb, -- Flexible storage for user-defined trackers
   raw_data jsonb,

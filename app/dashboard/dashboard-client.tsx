@@ -8,6 +8,7 @@ import { format, subDays, isAfter, parseISO } from "date-fns"
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from "@/components/ui/switch"
+import Link from 'next/link'
 import { Label } from "@/components/ui/label"
 import { linearRegression, linearRegressionLine } from 'simple-statistics'
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -35,7 +36,8 @@ import { useLanguage } from "@/components/providers/language-provider"
 export default function DashboardClient({ data: initialData }: DashboardReviewProps) {
     const { t, locale } = useLanguage()
     const [timeRange, setTimeRange] = useState<TimeRange>('30d')
-    const [selectedMetrics, setSelectedMetrics] = useState<string[]>(['composite_score'])
+    const [selectedMetrics, setSelectedMetrics] = useState<string[]>(['adjusted_score'])
+    const [isCompareMode, setIsCompareMode] = useState(false)
     const [showTrend, setShowTrend] = useState(false)
     const [dateRange, setDateRange] = useState<DateRange | undefined>({
         from: subDays(new Date(), 30),
@@ -60,12 +62,69 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
             endDate = dateRange.to ? endOfDay(dateRange.to) : endOfDay(dateRange.from)
         }
 
-        return initialData
+        // 1. Filter Data First
+        const filtered = initialData
             .filter(item => {
                 const itemDate = parseISO(item.date)
                 return isAfter(itemDate, startDate) && (timeRange === 'custom' ? itemDate <= endDate : true)
             })
             .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+
+        // 2. Calculate Step Stats for Normalization (Dynamic Min/Max)
+        const stepValues = filtered
+            .map(d => d.step_count)
+            .filter(v => typeof v === 'number' && !isNaN(v))
+
+        const minSteps = stepValues.length ? Math.min(...stepValues) : 0
+        const maxSteps = stepValues.length ? Math.max(...stepValues) : 1 // avoid div by 0
+
+        // 3. Map with Adjusted Score
+
+
+        // 3. Map with Adjusted Score
+        return filtered.map(d => {
+            // Composite from Visible
+            const baseScore = d.custom_metrics?.composite_score ?? 0
+
+            // Step Factor (0-3 scale)
+            let stepFactor = 0
+            if (typeof d.step_count === 'number' && !isNaN(d.step_count) && stepValues.length > 0) {
+                if (maxSteps === minSteps) {
+                    stepFactor = 0 // No variance
+                } else {
+                    // Normalize 0-1 then scale to 3
+                    // Higher steps = Higher factor
+                    stepFactor = ((d.step_count - minSteps) / (maxSteps - minSteps)) * 3
+                }
+            }
+
+            // Exertion (if available, usually 'Stability Score' or sum of exertion tags if we saved it)
+            // Note: Our DB schema has 'exertion_score' column.
+            const exertionScore = d.exertion_score ?? 0
+
+            // Final Score: Symptom Sum (Bad) - Exertion (Good/Reflects Capacity) - Steps (Good/Reflects Capacity)
+            // High Score = Bad.
+            // High Exertion = Good (implies ability to do things). -> Subtract it.
+            // High Steps = Good. -> Subtract it.
+
+            let adjustedScore = baseScore - exertionScore - stepFactor
+            if (adjustedScore < 0) adjustedScore = 0
+
+            // IF we have no step data at all (e.g. stepValues is empty), then adjustedScore should JUST be baseScore.
+            // stepFactor logic above handles this by initializing to 0.
+            // However, if logic is broken:
+            // The issue might be that `baseScore` is not available if custom_metrics is null?
+            // Or 'adjusted_score' is becoming NaN?
+
+            return {
+                ...d,
+                adjusted_score: adjustedScore,
+                step_factor: stepFactor,
+                // Ensure composite_score is accessible at root level for charts if needed
+                composite_score: baseScore
+            }
+        })
+
     }, [initialData, timeRange, dateRange])
 
     // -- 2a. Extract Dynamic Metrics --
@@ -79,9 +138,11 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
 
         const dynamicOptions = Array.from(dynamicKeys).sort()
         const defaults = [
-            { value: 'composite_score', label: 'Track-ME Score' },
+            { value: 'adjusted_score', label: 'Track-ME Score' },
+            { value: 'composite_score', label: 'Symptom Score (Visible)' },
             { value: 'hrv', label: 'Heart Rate Variability' },
             { value: 'resting_heart_rate', label: 'Resting HR' },
+            { value: 'step_count', label: 'Steps' },
             { value: 'exertion_score', label: 'Exertion Score' }
         ]
         const allOptions = [...defaults]
@@ -97,9 +158,12 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
     const getMetricConfig = (key: string) => {
         // Known static configs
         switch (key) {
-            case 'composite_score': return { label: t('dashboard.metrics.composite_score.label'), color: '#fb7185', domain: ['auto', 'auto'], unit: '', invert: true, description: t('dashboard.metrics.composite_score.description'), better: t('dashboard.metrics.composite_score.better') }
+
+            case 'adjusted_score': return { label: t('dashboard.metrics.adjusted_score.label'), color: '#fb7185', domain: ['auto', 'auto'], unit: '', invert: true, description: t('dashboard.metrics.adjusted_score.description'), better: t('dashboard.metrics.adjusted_score.better') }
+            case 'composite_score': return { label: t('dashboard.metrics.composite_score.label'), color: '#f472b6', domain: ['auto', 'auto'], unit: '', invert: true, description: t('dashboard.metrics.composite_score.description'), better: t('dashboard.metrics.composite_score.better') }
             case 'hrv': return { label: t('dashboard.metrics.hrv.label'), color: '#3b82f6', domain: ['auto', 'auto'], unit: 'ms', invert: false, description: t('dashboard.metrics.hrv.description'), better: t('dashboard.metrics.hrv.better') }
             case 'resting_heart_rate': return { label: t('dashboard.metrics.resting_heart_rate.label'), color: '#f59e0b', domain: ['auto', 'auto'], unit: 'bpm', invert: true, description: t('dashboard.metrics.resting_heart_rate.description'), better: t('dashboard.metrics.resting_heart_rate.better') }
+            case 'step_count': return { label: t('dashboard.metrics.step_count.label'), color: '#06b6d4', domain: ['auto', 'auto'], unit: '', invert: false, description: t('dashboard.metrics.step_count.description'), better: t('dashboard.metrics.step_count.better') }
             case 'exertion_score': return { label: t('dashboard.metrics.exertion_score.label'), color: '#10b981', domain: [0, 10], unit: '', invert: false, description: t('dashboard.metrics.exertion_score.description'), better: t('dashboard.metrics.exertion_score.better') }
         }
 
@@ -121,6 +185,7 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
 
     // -- 1b. Enhanced Chart Data (Trend Line) --
     // Only calculate trend for the PRIMARY metric to avoid clutter
+    // -- 1b. Enhanced Chart Data (Trend Line) --
     const chartData = useMemo(() => {
         const data = [...processedData]
         if (!showTrend || data.length < 2 || selectedMetrics.length === 0) return data
@@ -130,9 +195,9 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
         selectedMetrics.forEach(metric => {
             const points: { t: number, v: number, i: number }[] = []
             data.forEach((d, i) => {
-                const val = metric === 'composite_score'
-                    ? d.custom_metrics?.composite_score
-                    : (d[metric] ?? d.custom_metrics?.[metric])
+                const val = (d[metric] !== undefined)
+                    ? d[metric]
+                    : (d.custom_metrics?.[metric])
 
                 if (typeof val === 'number' && !isNaN(val)) {
                     points.push({ t: new Date(d.date).getTime(), v: val, i })
@@ -141,38 +206,21 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
 
             if (points.length < 2) return
 
-            // Adaptive Trend Logic
-            const firstTime = points[0].t
-            const lastTime = points[points.length - 1].t
-            const daysDiff = (lastTime - firstTime) / (1000 * 60 * 60 * 24)
+            // User requested: Trend line must start all the way on the left.
+            // Moving Average naturally has a lag (missing start).
+            // Linear Regression covers the full range naturally.
+            // We'll use Linear Regression for ALL timeframes to ensure edge-to-edge visibility.
+            // If the user later requests "curved" trends for long periods, we can use LOESS, but for now Regression fixes the "gap" issue.
 
-            if ((timeRange !== '3m' && timeRange !== 'all') && (daysDiff < 90)) {
-                const regressionPoints = points.map(p => [p.t, p.v])
-                const regression = linearRegression(regressionPoints)
-                const predict = linearRegressionLine(regression)
+            const regressionPoints = points.map(p => [p.t, p.v])
+            const regression = linearRegression(regressionPoints)
+            const predict = linearRegressionLine(regression)
 
-                data.forEach((d, i) => {
-                    const val = predict(new Date(d.date).getTime())
-                    if (!trendsByIndex.has(i)) trendsByIndex.set(i, {})
-                    trendsByIndex.get(i)![`trend_${metric}`] = val
-                })
-            } else {
-                let windowSize = 7
-                if (timeRange === 'all' || daysDiff > 180) windowSize = 30
-                else if (daysDiff > 90) windowSize = 14
-
-                for (let i = 0; i < points.length; i++) {
-                    if (i >= windowSize - 1) {
-                        const window = points.slice(i - windowSize + 1, i + 1)
-                        const sum = window.reduce((acc, p) => acc + p.v, 0)
-                        const avg = sum / windowSize
-
-                        const dataIndex = points[i].i
-                        if (!trendsByIndex.has(dataIndex)) trendsByIndex.set(dataIndex, {})
-                        trendsByIndex.get(dataIndex)![`trend_${metric}`] = avg
-                    }
-                }
-            }
+            data.forEach((d, i) => {
+                const val = predict(new Date(d.date).getTime())
+                if (!trendsByIndex.has(i)) trendsByIndex.set(i, {})
+                trendsByIndex.get(i)![`trend_${metric}`] = val
+            })
         })
 
         return data.map((d, i) => ({
@@ -187,70 +235,146 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
 
         return selectedMetrics.map(metric => {
             const config = getMetricConfig(metric)
-            const getValue = (d: any, k: string) => d[k] ?? d.custom_metrics?.[k] ?? 0;
-
-            // 1. Current
-            const currentValues = processedData.map(d => getValue(d, metric)).filter(v => typeof v === 'number' && !isNaN(v))
-            const currentAvg = currentValues.length > 0 ? currentValues.reduce((a, b) => a + b, 0) / currentValues.length : 0
-
-            // 2. Previous Period Setup
-            const now = new Date()
-            let prevStart = subDays(now, 60)
-            let prevEnd = subDays(now, 30)
-
-            if (timeRange === '7d') { prevStart = subDays(now, 14); prevEnd = subDays(now, 7); }
-            else if (timeRange === '30d') { prevStart = subDays(now, 60); prevEnd = subDays(now, 30); }
-            else if (timeRange === '3m') { prevStart = subDays(now, 180); prevEnd = subDays(now, 90); }
-            else if (timeRange === 'custom' && dateRange?.from) {
-                const startElement = dateRange.from
-                const endElement = dateRange.to || dateRange.from
-                const duration = differenceInDays(endElement, startElement) + 1
-                prevEnd = subDays(startElement, 1)
-                prevStart = subDays(startElement, duration)
+            const getValue = (d: any, k: string) => {
+                const v = d[k] ?? d.custom_metrics?.[k]
+                return (v === undefined || v === null) ? null : v
             }
 
-            // 3. Calculate Prev Avg
-            let trendPrevAvg = 0
-            if (timeRange === 'all') {
-                const pStart = subDays(now, 60)
-                const pEnd = subDays(now, 30)
-                const pData = initialData.filter(item => { const d = parseISO(item.date); return isAfter(d, pStart) && !isAfter(d, pEnd) })
-                const pValues = pData.map(d => getValue(d, metric)).filter(v => typeof v === 'number' && !isNaN(v))
-                trendPrevAvg = pValues.length > 0 ? pValues.reduce((a, b) => a + b, 0) / pValues.length : 0
+            // 1. Current Period Data (Use processedData directly as it contains computed metrics like adjusted_score)
+            // 'processedData' is already filtered to the selected timeRange/dateRange and sorted.
+            const currentValues = processedData
+                .map(d => getValue(d, metric))
+                .filter(v => typeof v === 'number' && !isNaN(v)) as number[]
 
-                const tStart = subDays(now, 30)
-                const tData = initialData.filter(item => isAfter(parseISO(item.date), tStart))
-                const tValues = tData.map(d => getValue(d, metric)).filter(v => typeof v === 'number' && !isNaN(v))
-                const trendCurrentAvg = tValues.length > 0 ? tValues.reduce((a, b) => a + b, 0) / tValues.length : 0 // For Trend Badge specifically
+            const currentAvg = currentValues.length > 0 ? currentValues.reduce((a, b) => a + b, 0) / currentValues.length : 0
 
-                const denominator = Math.abs(trendPrevAvg) < 0.01 ? 1 : Math.abs(trendPrevAvg)
-                const diff = trendCurrentAvg - trendPrevAvg
-                const pct = (diff / denominator) * 100
+            // Helper: Compute Metric for Previous Data (which is raw initialData)
+            // We use the CURRENT view's step normalization (min/max) to ensure fair comparison.
+            // Recalculate stats from processedData for safety within this scope
+            const stepValues = processedData
+                .map(d => d.step_count)
+                .filter(v => typeof v === 'number' && !isNaN(v)) as number[]
+            const minSteps = stepValues.length > 0 ? Math.min(...stepValues) : 0
+            const maxSteps = stepValues.length > 0 ? Math.max(...stepValues) : 0
 
-                let trend = 'stable'
-                if (Math.abs(pct) < 1) trend = 'stable'
-                else if (pct > 0) trend = config.invert ? 'worsening' : 'improving'
-                else trend = config.invert ? 'improving' : 'worsening'
+            const getComputedValue = (d: any, key: string) => {
+                if (key === 'adjusted_score') {
+                    // Replicate logic from processedData EXACTLY
+                    const base = d.custom_metrics?.composite_score ?? 0
+                    let stepFactor = 0
 
-                return { key: metric, trend, pct: Math.abs(pct), rawPct: pct, label: config.label, unit: config.unit, avg: currentAvg }
+                    const sVal = d.step_count
+                    if (typeof sVal === 'number' && !isNaN(sVal) && stepValues.length > 0) {
+                        if (maxSteps === minSteps) {
+                            stepFactor = 0
+                        } else {
+                            const normalized = (sVal - minSteps) / (maxSteps - minSteps)
+                            stepFactor = normalized * 3
+                        }
+                    }
+                    return Math.max(0, base - stepFactor)
+                }
+                return getValue(d, key)
+            }
+
+            // 2. Previous Period Data Setup
+            let prevStart: Date
+            let prevEnd: Date
+            const now = new Date()
+
+            // Derive Current Start/End from processedData to allow precise previous calculation
+            // Fallback to logic if processedData is empty
+            let cStart: Date
+            let cEnd: Date
+
+            if (processedData.length > 0) {
+                cStart = startOfDay(parseISO(processedData[0].date))
+                cEnd = endOfDay(parseISO(processedData[processedData.length - 1].date))
             } else {
-                const prevData = initialData.filter(item => {
-                    const d = parseISO(item.date)
-                    return isAfter(d, prevStart) && !isAfter(d, prevEnd)
-                })
-                const prevValues = prevData.map(d => getValue(d, metric)).filter(v => typeof v === 'number' && !isNaN(v))
-                trendPrevAvg = prevValues.length > 0 ? prevValues.reduce((a, b) => a + b, 0) / prevValues.length : 0
+                cEnd = endOfDay(now)
+                if (timeRange === '7d') cStart = subDays(now, 7)
+                else if (timeRange === '30d') cStart = subDays(now, 30)
+                else if (timeRange === '3m') cStart = subDays(now, 90)
+                else if (timeRange === 'all') cStart = subDays(now, 30)
+                else cStart = subDays(now, 30)
+                // Custom is handled by processedData check mostly, keeping fallbacks safe
+            }
 
-                const denominator = Math.abs(trendPrevAvg) < 0.01 ? 1 : Math.abs(trendPrevAvg)
+            if (timeRange === 'all') {
+                prevEnd = subDays(cStart, 1)
+                prevStart = new Date(0)
+            } else {
+                const duration = differenceInDays(cEnd, cStart) + 1
+                prevEnd = subDays(cStart, 1)
+                prevStart = subDays(cStart, duration)
+            }
+
+            const pStart = startOfDay(prevStart)
+            const pEnd = endOfDay(prevEnd)
+
+            const prevData = initialData.filter(item => {
+                const d = parseISO(item.date)
+                return d >= pStart && d <= pEnd
+            })
+            // Use getComputedValue here!
+            const prevValues = prevData.map(d => getComputedValue(d, metric)).filter(v => typeof v === 'number' && !isNaN(v)) as number[]
+
+            // 3. Calculate "Period Change" (Linear Regression on Current Data)
+            // "Percentage of how the data changed in the timeframe that you can see"
+            let periodTrendPct = 0
+            let periodTrendStatus = 'stable'
+
+            if (currentValues.length >= 2) {
+                // Map to [x, y] for regression. x = index.
+                const dataPoints = currentValues.map((val, idx) => [idx, val])
+                const { m, b } = linearRegression(dataPoints)
+
+                // Start Value (y at x=0)
+                const startVal = b
+                // End Value (y at x=n-1)
+                const endVal = m * (currentValues.length - 1) + b
+
+                // Avoid division by zero-ish numbers
+                const safeStart = Math.abs(startVal) < 0.01 ? 0.01 : startVal
+
+                // Calculate percentage change over the period
+                // Note: If startVal is very small, this can explode.
+                // Logic: (End - Start) / Start
+                periodTrendPct = ((endVal - startVal) / safeStart) * 100
+
+                if (Math.abs(periodTrendPct) < 1) periodTrendStatus = 'stable'
+                else if (periodTrendPct > 0) periodTrendStatus = config.invert ? 'worsening' : 'improving'
+                else periodTrendStatus = config.invert ? 'improving' : 'worsening'
+            }
+
+            // 4. Calculate "Comparison Change" (Current Avg vs Previous Avg)
+            let compareTrendPct = 0
+            let compareTrendStatus = 'insufficient_data'
+
+            if (prevValues.length > 0) {
+                const trendPrevAvg = prevValues.reduce((a, b) => a + b, 0) / prevValues.length
+                const denominator = Math.abs(trendPrevAvg) < 1 ? 1 : Math.abs(trendPrevAvg)
                 const diff = currentAvg - trendPrevAvg
-                const pct = (diff / denominator) * 100
+                compareTrendPct = (diff / denominator) * 100
 
-                let trend = 'stable'
-                if (Math.abs(pct) < 1) trend = 'stable'
-                else if (pct > 0) trend = config.invert ? 'worsening' : 'improving'
-                else trend = config.invert ? 'improving' : 'worsening'
+                if (Math.abs(compareTrendPct) < 1) compareTrendStatus = 'stable'
+                else if (compareTrendPct > 0) compareTrendStatus = config.invert ? 'worsening' : 'improving'
+                else compareTrendStatus = config.invert ? 'improving' : 'worsening'
+            }
 
-                return { key: metric, trend, pct: Math.abs(pct), rawPct: pct, label: config.label, unit: config.unit, avg: currentAvg }
+            return {
+                key: metric,
+                label: config.label,
+                unit: config.unit,
+                avg: currentAvg,
+
+                // Badge 1: Period Trend (Change within selected view)
+                periodTrendPct,
+                periodTrendStatus,
+
+                // Badge 2: Comparison Trend (Change vs History)
+                compareTrendPct,
+                compareTrendStatus,
             }
         })
     }, [processedData, initialData, selectedMetrics, timeRange, dateRange])
@@ -290,21 +414,24 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
                     </p>
                 </div>
                 <div className="bg-muted/30 p-1 rounded-lg flex items-center gap-1 self-start">
-                    {(['7d', '30d', '3m', 'all'] as TimeRange[]).map((r) => (
-                        <button
-                            key={r}
-                            onClick={() => setTimeRange(r)}
-                            className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all ${timeRange === r
-                                ? 'bg-white dark:bg-zinc-800 text-foreground shadow-sm'
-                                : 'text-muted-foreground hover:text-foreground'
-                                }`}
-                        >
-                            {(() => {
-                                const map: Record<string, string> = { '7d': 'd7', '30d': 'd30', '3m': 'm3', 'all': 'all' }
-                                return t(`dashboard.time_ranges.${map[r]}` as any)
-                            })()}
-                        </button>
-                    ))}
+                    {(['7d', '30d', '3m', 'all'] as TimeRange[]).map((r) => {
+                        const rangeMap: Record<string, string> = { '7d': 'd7', '30d': 'd30', '3m': 'm3', 'all': 'all' }
+                        const labelKey = 'dashboard.time_ranges.' + rangeMap[r]
+                        return (
+                            <button
+                                key={r}
+                                onClick={() => setTimeRange(r)}
+                                className={cn(
+                                    "px-4 py-1.5 rounded-md text-xs font-medium transition-all",
+                                    timeRange === r
+                                        ? "bg-white dark:bg-zinc-800 text-foreground shadow-sm"
+                                        : "text-muted-foreground hover:text-foreground"
+                                )}
+                            >
+                                {t(labelKey as any)}
+                            </button>
+                        )
+                    })}
 
                     <div className="w-px h-4 bg-border mx-1" />
 
@@ -378,19 +505,43 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
                                             </TooltipProvider>
                                         )}
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-xl font-bold tracking-tight">
-                                            {stat.trend === 'stable' ? t('dashboard.status.stable') : (stat.trend === 'improving' ? t('dashboard.status.improving') : t('dashboard.status.declining'))}
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <span className="text-xl font-bold tracking-tight mr-2">
+                                            {stat.periodTrendStatus === 'stable' ? t('dashboard.status.stable') :
+                                                (stat.periodTrendStatus === 'improving' ? t('dashboard.status.improving') : t('dashboard.status.declining'))}
                                         </span>
-                                        <Badge variant="outline" className={`
-                                            ${stat.trend === 'improving' ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400' : ''}
-                                            ${stat.trend === 'worsening' ? 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400' : ''}
-                                            ${stat.trend === 'stable' ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400' : ''}
-                                        `}>
-                                            {stat.trend !== 'stable' && stat.rawPct > 0 && <TrendingUp className="w-3 h-3 mr-1" />}
-                                            {stat.trend !== 'stable' && stat.rawPct < 0 && <TrendingDown className="w-3 h-3 mr-1" />}
-                                            {stat.trend === 'stable' && <Minus className="w-3 h-3 mr-1" />}
-                                            {stat.pct.toFixed(0)}%
+
+                                        {/* Badge 1: Period Trend (Visible Range) */}
+                                        <Badge variant="outline" className={cn(
+                                            stat.periodTrendStatus === 'improving' && "bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400",
+                                            stat.periodTrendStatus === 'worsening' && "bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400",
+                                            stat.periodTrendStatus === 'stable' && "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400"
+                                        )}>
+                                            <span className="text-[10px] mr-1 opacity-70">Trend:</span>
+                                            {stat.periodTrendStatus === 'stable' && <Minus className="w-3 h-3 mr-1" />}
+                                            {stat.periodTrendStatus !== 'stable' && stat.periodTrendPct > 0 && <TrendingUp className="w-3 h-3 mr-1" />}
+                                            {stat.periodTrendStatus !== 'stable' && stat.periodTrendPct < 0 && <TrendingDown className="w-3 h-3 mr-1" />}
+                                            {Math.abs(stat.periodTrendPct).toFixed(0)}%
+                                        </Badge>
+
+                                        {/* Badge 2: Comparison Trend (vs Previous) */}
+                                        <Badge variant="outline" className={cn(
+                                            stat.compareTrendStatus === 'improving' && "bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400",
+                                            stat.compareTrendStatus === 'worsening' && "bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400",
+                                            stat.compareTrendStatus === 'stable' && "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400",
+                                            stat.compareTrendStatus === 'insufficient_data' && "bg-zinc-100 text-zinc-500 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-400"
+                                        )}>
+                                            <span className="text-[10px] mr-1 opacity-70">vs Prev:</span>
+                                            {stat.compareTrendStatus === 'insufficient_data' ? (
+                                                <span className="text-[10px]">No Data</span>
+                                            ) : (
+                                                <>
+                                                    {stat.compareTrendStatus === 'stable' && <Minus className="w-3 h-3 mr-1" />}
+                                                    {stat.compareTrendStatus !== 'stable' && stat.compareTrendPct > 0 && <TrendingUp className="w-3 h-3 mr-1" />}
+                                                    {stat.compareTrendStatus !== 'stable' && stat.compareTrendPct < 0 && <TrendingDown className="w-3 h-3 mr-1" />}
+                                                    {Math.abs(stat.compareTrendPct).toFixed(0)}%
+                                                </>
+                                            )}
                                         </Badge>
                                     </div>
                                 </div>
@@ -398,7 +549,23 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
                         </div>
                     </div>
 
+
                     <div className="flex items-center gap-4 self-start">
+                        <div className="flex items-center space-x-2">
+                            <Switch
+                                id="compare-mode"
+                                checked={isCompareMode}
+                                onCheckedChange={(checked) => {
+                                    setIsCompareMode(checked)
+                                    // If turning off compare mode, enforce single selection
+                                    if (!checked && selectedMetrics.length > 1) {
+                                        setSelectedMetrics([selectedMetrics[0]])
+                                    }
+                                }}
+                            />
+                            <Label htmlFor="compare-mode" className="text-xs text-muted-foreground hidden md:block">Compare</Label>
+                        </div>
+
                         <div className="flex items-center space-x-2">
                             <Switch id="trend-mode" checked={showTrend} onCheckedChange={setShowTrend} />
                             <Label htmlFor="trend-mode" className="text-xs text-muted-foreground hidden md:block">{t('dashboard.trend_mode')}</Label>
@@ -407,12 +574,15 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <Button variant="outline" size="sm" className="h-8 text-xs w-[200px] justify-between">
-                                    {selectedMetrics.length === 1 ? getMetricConfig(selectedMetrics[0]).label : `${selectedMetrics.length} ${t('dashboard.metrics_selected')}`}
+                                    {selectedMetrics.length === 1
+                                        ? getMetricConfig(selectedMetrics[0]).label
+                                        : (selectedMetrics.length + " " + t('dashboard.metrics_selected'))
+                                    }
                                     <ChevronDown className="h-3 w-3 opacity-50" />
                                 </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent className="w-[200px] max-h-[300px] overflow-y-auto">
-                                <DropdownMenuLabel>{t('dashboard.metrics_dropdown')}</DropdownMenuLabel>
+                                <DropdownMenuLabel>{isCompareMode ? t('dashboard.metrics_dropdown') : 'Select Metric'}</DropdownMenuLabel>
                                 <DropdownMenuSeparator />
                                 {availableMetrics.map((m) => {
                                     const isSelected = selectedMetrics.includes(m.value)
@@ -421,13 +591,22 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
                                             key={m.value}
                                             checked={isSelected}
                                             onCheckedChange={(checked) => {
-                                                if (checked) {
-                                                    if (selectedMetrics.length < 2) {
-                                                        setSelectedMetrics([...selectedMetrics, m.value])
+                                                if (isCompareMode) {
+                                                    // Multi-select Mode (Max 2)
+                                                    if (checked) {
+                                                        if (selectedMetrics.length < 2) {
+                                                            setSelectedMetrics([...selectedMetrics, m.value])
+                                                        }
+                                                    } else {
+                                                        if (selectedMetrics.length > 1) {
+                                                            setSelectedMetrics(selectedMetrics.filter(id => id !== m.value))
+                                                        }
                                                     }
                                                 } else {
-                                                    if (selectedMetrics.length > 1) {
-                                                        setSelectedMetrics(selectedMetrics.filter(id => id !== m.value))
+                                                    // Single-select Mode
+                                                    if (checked) {
+                                                        // Replace current selection with new one
+                                                        setSelectedMetrics([m.value])
                                                     }
                                                 }
                                             }}
@@ -441,14 +620,32 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
                     </div>
                 </CardHeader>
 
-                <CardContent className="h-[400px] w-full pt-4">
+                <CardContent className="h-[400px] w-full pt-4 relative">
+                    {/* Step Data Warning Overlay */}
+                    {selectedMetrics.includes('step_count') && processedData.every(d => !d.step_count) && (
+                        <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/50 dark:bg-zinc-950/50 backdrop-blur-[1px] rounded-b-xl">
+                            <div className="bg-background border border-border shadow-lg rounded-xl p-6 max-w-sm text-center">
+                                <div className="mx-auto w-12 h-12 bg-blue-100 text-blue-500 rounded-full flex items-center justify-center mb-4">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-footprints"><path d="M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 11 3.8 11 8c0 2.85-2.92 5.5-3.8 7.18L7 16z" /><path d="M20 20v-2.38c0-2.12 1.03-3.12 1-5.62-.03-2.72-1.49-6-4.5-6C14.63 6 13 7.8 13 12c0 2.85 2.92 5.5 3.8 7.18L17 20z" /></svg>
+                                </div>
+                                <h3 className="font-semibold text-lg mb-2">No Step Data Found</h3>
+                                <p className="text-sm text-muted-foreground mb-4">
+                                    Upload your Apple Health data to see your daily steps and adjusted health score.
+                                </p>
+                                <Button asChild size="sm">
+                                    <Link href="/upload">Upload Data</Link>
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+
                     <ResponsiveContainer width="100%" height="100%">
                         <ComposedChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                             <defs>
                                 {selectedMetrics.map((metric, i) => {
                                     const config = getMetricConfig(metric)
                                     return (
-                                        <linearGradient key={metric} id={`colorMetric-${metric}`} x1="0" y1="0" x2="0" y2="1">
+                                        <linearGradient key={metric} id={'colorMetric-' + metric} x1="0" y1="0" x2="0" y2="1">
                                             <stop offset="5%" stopColor={config.color} stopOpacity={0.3} />
                                             <stop offset="95%" stopColor={config.color} stopOpacity={0.0} />
                                         </linearGradient>
@@ -533,14 +730,14 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
                                             yAxisId={metric}
                                             type="monotone"
                                             dataKey={(d) => {
-                                                const val = metric === 'composite_score' ? d.custom_metrics?.composite_score : (d[metric] ?? d.custom_metrics?.[metric]);
+                                                const val = d[metric] ?? d.custom_metrics?.[metric];
                                                 return (val === null || val === undefined || isNaN(val)) ? null : val;
                                             }}
                                             name={metric}
                                             stroke={config.color}
                                             strokeOpacity={showTrend ? 0.3 : 1}
                                             fillOpacity={showTrend ? 0.1 : 1}
-                                            fill={`url(#colorMetric-${metric})`}
+                                            fill={'url(#colorMetric-' + metric + ')'}
                                             strokeWidth={3}
                                             connectNulls={true}
                                         />
@@ -552,7 +749,7 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
                                             yAxisId={metric}
                                             type="monotone"
                                             dataKey={(d) => {
-                                                const val = metric === 'composite_score' ? d.custom_metrics?.composite_score : (d[metric] ?? d.custom_metrics?.[metric]);
+                                                const val = d[metric] ?? d.custom_metrics?.[metric];
                                                 return (val === null || val === undefined || isNaN(val)) ? null : val;
                                             }}
                                             name={metric}
@@ -568,10 +765,10 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
 
                             {showTrend && selectedMetrics.map(metric => (
                                 <Line
-                                    key={`trend-${metric}`}
+                                    key={'trend-' + metric}
                                     yAxisId={metric}
                                     type="monotone"
-                                    dataKey={`trend_${metric}`}
+                                    dataKey={'trend_' + metric}
                                     stroke={getMetricConfig(metric).color}
                                     strokeWidth={4}
                                     strokeDasharray="5 5"

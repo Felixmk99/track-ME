@@ -28,9 +28,9 @@ export const en: Dictionary = {
         contact: "Contact & Feature Ideas: felixmkania@gmail.com"
     },
     dashboard: {
-        title: "Illness Severity Trend",
-        subtitle_prefix: "Correlation between your",
-        subtitle_suffix: "and daily activities.",
+        title: "Health Trends",
+        subtitle_prefix: "Tracking your",
+        subtitle_suffix: "over time.",
         trend_mode: "Trend",
         metrics_dropdown: "Metrics (Max 2)",
         metrics_selected: "Selected",
@@ -41,7 +41,7 @@ export const en: Dictionary = {
         status: {
             stable: "Stable",
             improving: "Improving",
-            declining: "Declining",
+            declining: "Worsening",
             worsening: "Worsening"
         },
         time_ranges: {
@@ -61,8 +61,13 @@ export const en: Dictionary = {
         },
         metrics: {
             composite_score: {
-                label: "Track-ME Score",
+                label: "Symptom Score",
                 description: "Your overall health snapshot based on symptom severity and daily activity.",
+                better: "Lower is better"
+            },
+            adjusted_score: {
+                label: "Track-ME Score",
+                description: "Dynamic health score adjusted for daily step count.",
                 better: "Lower is better"
             },
             hrv: {
@@ -74,6 +79,11 @@ export const en: Dictionary = {
                 label: "Resting HR",
                 description: "Your average heart rate while at complete rest.",
                 better: "Lower is better"
+            },
+            step_count: {
+                label: "Steps",
+                description: "Daily step count from Apple Health.",
+                better: "Higher is better"
             },
             exertion_score: {
                 label: "Exertion",

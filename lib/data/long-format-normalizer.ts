@@ -127,8 +127,13 @@ export function normalizeLongFormatData(rows: any[]) {
 
         // If we have neither, score is null. If we have either, calculate.
         let compositeScore = null;
-        if (record.raw_symptoms.length > 0 || record.raw_exertion.length > 0) {
-            compositeScore = symptomSum - exertionSum;
+        if (record.raw_symptoms.length > 0) {
+            compositeScore = symptomSum;
+        }
+
+        // Backfill Exertion Score if explicit "Stability Score" wasn't found but we have raw exertion values
+        if (record.exertion_score === null && record.raw_exertion.length > 0) {
+            record.exertion_score = exertionSum;
         }
 
         // Clean up temp fields
