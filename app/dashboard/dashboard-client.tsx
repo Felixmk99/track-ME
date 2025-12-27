@@ -648,13 +648,13 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
                                         </Badge>
 
                                         {/* PEM STATS - ADDED ALONGSIDE */}
-                                        {showCrashes && (
+                                        {showCrashes && index === 0 && (
                                             <>
                                                 <div className="w-px h-6 bg-border mx-1" /> {/* Divider */}
 
                                                 <Badge variant="outline" className={cn(
-                                                    "border-zinc-400 bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100", // Neutral styling as per request
-                                                    stat.crashCount > 0 && "border-red-200 bg-red-50 text-red-900 dark:bg-red-900/20 dark:text-red-300"
+                                                    "border-zinc-300 bg-zinc-50 text-zinc-900 dark:bg-zinc-900 dark:text-zinc-100 dark:border-zinc-700",
+                                                    stat.crashCount > 0 && "border-zinc-950 bg-zinc-900 text-white dark:bg-white dark:text-black dark:border-white"
                                                 )}>
                                                     <Activity className="w-3 h-3 mr-1" />
                                                     {stat.crashCount} PEM Days
@@ -796,11 +796,12 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
                                     return (
                                         <React.Fragment key={d.date}>
                                             <ReferenceArea
+                                                yAxisId={selectedMetrics[0]}
                                                 x1={d.date}
                                                 x2={d.date}
                                                 strokeOpacity={0}
-                                                fill="#ef4444"
-                                                fillOpacity={0.1}
+                                                fill="#000"
+                                                fillOpacity={0.05}
                                             />
                                         </React.Fragment>
                                     )
@@ -877,6 +878,8 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
                                             stroke={config.color}
                                             fill={`url(#colorMetric-${metric})`}
                                             strokeWidth={2}
+                                            strokeOpacity={showTrend ? 0.2 : 1}
+                                            fillOpacity={showTrend ? 0.2 : 1}
                                             activeDot={{ r: 6 }}
                                             yAxisId={metric}
                                         />
@@ -889,6 +892,7 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
                                             dataKey={metric}
                                             stroke={config.color}
                                             strokeWidth={2}
+                                            strokeOpacity={showTrend ? 0.2 : 1}
                                             dot={false}
                                             activeDot={{ r: 6 }}
                                             yAxisId={metric}
@@ -902,12 +906,12 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
                                 if (d.custom_metrics?.Crash == 1 || d.custom_metrics?.crash == 1) {
                                     return (
                                         <ReferenceLine
+                                            yAxisId={selectedMetrics[0]}
                                             key={`line-${d.date}`}
                                             x={d.date}
-                                            stroke="#ef4444"
-                                            strokeWidth={2}
-                                            opacity={1}
-                                            label={{ position: 'insideTop', value: 'PEM', fill: '#ef4444', fontSize: 10, fontWeight: 'bold' }}
+                                            stroke="#000"
+                                            strokeWidth={1}
+                                            opacity={0.5}
                                         />
                                     )
                                 }
@@ -920,10 +924,10 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
                                     key={`trend_${metric}`}
                                     dataKey={`trend_${metric}`}
                                     stroke={getMetricConfig(metric).color}
-                                    strokeWidth={2}
+                                    strokeWidth={3}
                                     strokeDasharray="5 5"
                                     dot={false}
-                                    opacity={0.6}
+                                    opacity={1}
                                     yAxisId={metric}
                                     isAnimationActive={false}
                                 />
@@ -941,13 +945,7 @@ export default function DashboardClient({ data: initialData }: DashboardReviewPr
                 </div>
             )}
 
-            <div className="flex justify-center pt-8 pb-4">
-                <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-zinc-100 dark:bg-zinc-900 rounded-full border border-zinc-200 dark:border-zinc-800">
-                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                    <span className="text-xs font-medium text-muted-foreground">{t('dashboard.charts.synced')}</span>
-                </div>
-            </div>
-            <p className="text-center text-[10px] text-muted-foreground opacity-60 pb-8">{t('dashboard.charts.encrypted')}</p>
+
 
         </div>
     )
